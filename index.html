@@ -795,7 +795,7 @@ function renderStatusChart(s){
 }
 
 function renderTrendChart(s){
-  const ctx = document.getElementById('trendChart');
+  const ctx = document.getElementById('trendChart').getContext('2d');
   if(charts.trend) charts.trend.destroy();
   const months = s.months;
   charts.trend = new Chart(ctx, {
@@ -969,7 +969,7 @@ function nextMonths(lastMonth, n){
 }
 
 function renderForecast(s){
-  const ctx = document.getElementById('forecastChart');
+  const ctx = document.getElementById('forecastChart').getContext('2d');
   const panel = document.getElementById('forecastPanel');
   if(charts.forecast) charts.forecast.destroy();
   if(s.months.length<3){
