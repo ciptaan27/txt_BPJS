@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Berkas Klaim — Analisis Klaim BPJS Kesehatan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<style>
+  :root{
+    --paper:#EEF2EA;
+    --paper-card:#F9FBF7;
+    --ink:#16231F;
+    --ink-soft:#4E5D54;
+    --line:#C9D2C2;
+    --approve:#2F6F4E;
+    --reject:#B23A2E;
+    --pending:#B8860B;
+    --accent:#1F6F5C;
+    --accent-ink:#0E3D31;
+    --radius:10px;
+    --mono:'IBM Plex Mono', monospace;
+    --display:'Space Grotesk', sans-serif;
+    --body:'Inter', sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--body);
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  .app{max-width:1120px;margin:0 auto;padding:0 20px 80px;}
+
+  /* ---------- HERO ---------- */
+  .hero{
+    display:flex;
+    align-items:center;
+    gap:36px;
+    padding:44px 0 32px;
+    border-bottom:1px solid var(--line);
+    flex-wrap:wrap;
+  }
+  .stamp-wrap{position:relative;width:132px;height:132px;flex:0 0 auto;}
+  .stamp-ring{
+    position:absolute;inset:0;
+    border-radius:50%;
+    border:2px dashed var(--accent);
+    animation:spin 40s linear infinite;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg);} }
+  .stamp-core{
+    position:absolute;inset:14px;
+    border-radius:50%;
+    background:var(--paper-card);
+    border:3px solid var(--accent);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;
+    transition:border-color .4s ease, color .4s ease;
+  }
+  .stamp-core .pct{font-family:var(--display);font-weight:700;font-size:26px;line-height:1;color:var(--ink);}
+  .stamp-core .lbl{font-family:var(--mono);font-size:8px;letter-spacing:.06em;color:var(--ink-soft);margin-top:4px;text-transform:uppercase;}
+  .stamp-core.ok{border-color:var(--approve);}
+  .stamp-core.warn{border-color:var(--pending);}
+  .stamp-core.bad{border-color:var(--reject);}
+  .stamp-wrap.ok .stamp-ring{border-color:var(--approve);}
+  .stamp-wrap.warn .stamp-ring{border-color:var(--pending);}
+  .stamp-wrap.bad .stamp-ring{border-color:var(--reject);}
+
+  .hero-text{flex:1 1 320px;}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-ink);margin:0 0 8px;}
+  h1{font-family:var(--display);font-weight:700;font-size:clamp(26px,4vw,36px);margin:0 0 10px;letter-spacing:-.01em;}
+  .hero-text p{margin:0;color:var(--ink-soft);max-width:56ch;}
+  .kpi-strip{display:flex;gap:28px;margin-top:18px;flex-wrap:wrap;}
+  .kpi{font-family:var(--mono);}
+  .kpi .n{font-size:20px;font-weight:600;display:block;}
+  .kpi .k{font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em;}
+
+  /* ---------- PANELS ---------- */
+  section.panel{
+    background:var(--paper-card);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:24px;
+    margin-top:24px;
+  }
+  .panel h2{font-family:var(--display);font-size:18px;margin:0 0 4px;}
+  .panel .sub{color:var(--ink-soft);font-size:13.5px;margin:0 0 18px;}
+  .privacy-note{
+    font-family:var(--mono);font-size:11.5px;color:var(--accent-ink);
+    background:#E4EEE7;border:1px solid #C4DBCC;border-radius:6px;
+    padding:8px 12px;display:inline-block;margin-top:14px;
+  }
+
+  .dropzone{
+    border:2px dashed var(--line);
+    border-radius:var(--radius);
+    padding:36px 20px;
+    text-align:center;
+    cursor:pointer;
+    transition:border-color .2s, background .2s;
+  }
+  .dropzone:hover, .dropzone.drag{border-color:var(--accent);background:#F0F5ED;}
+  .dropzone strong{display:block;font-family:var(--display);font-size:16px;margin-bottom:4px;}
+  .dropzone span{color:var(--ink-soft);font-size:13px;}
+  #fileInput{display:none;}
+  .file-list{margin-top:14px;font-family:var(--mono);font-size:12.5px;}
+  .file-list div{padding:4px 0;border-bottom:1px dotted var(--line);}
+
+  .row{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;}
+  .field{display:flex;flex-direction:column;gap:6px;min-width:180px;}
+  .field label{font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);font-family:var(--mono);}
+  select, button, textarea{
+    font-family:var(--body);
+    border-radius:7px;
+    border:1px solid var(--line);
+    padding:9px 12px;
+    background:#fff;
+    color:var(--ink);
+    font-size:13.5px;
+  }
+  button{
+    background:var(--accent);
+    color:#fff;
+    border:none;
+    cursor:pointer;
+    font-weight:600;
+    letter-spacing:.02em;
+    transition:background .15s;
+  }
+  button:hover{background:var(--accent-ink);}
+  button.ghost{background:transparent;color:var(--accent-ink);border:1px solid var(--accent);}
+  button.ghost:hover{background:#E4EEE7;color:var(--accent-ink);}
+  button:disabled{background:#B9C2B4;cursor:not-allowed;}
+
+  .map-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;margin-top:16px;}
+  .map-grid .field select{width:100%;}
+  .req::after{content:" *";color:var(--reject);}
+
+  /* ---------- TABS ---------- */
+  .tabs{display:flex;gap:4px;margin-top:28px;border-bottom:1px solid var(--line);flex-wrap:wrap;}
+  .tab-btn{
+    background:none;border:none;color:var(--ink-soft);
+    padding:10px 16px;font-family:var(--mono);font-size:12.5px;
+    text-transform:uppercase;letter-spacing:.04em;cursor:pointer;
+    border-bottom:2px solid transparent;font-weight:500;
+  }
+  .tab-btn.active{color:var(--accent-ink);border-bottom:2px solid var(--accent);}
+  .tab-pane{display:none;padding-top:22px;}
+  .tab-pane.active{display:block;}
+
+  .card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:20px;}
+  .card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:16px;}
+  .card .v{font-family:var(--mono);font-size:22px;font-weight:600;}
+  .card .t{font-size:11.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;margin-top:4px;}
+  .card.reject .v{color:var(--reject);}
+  .card.approve .v{color:var(--approve);}
+
+  table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12.5px;background:#fff;}
+  thead th{
+    text-align:left;background:var(--accent-ink);color:#fff;
+    padding:9px 10px;font-weight:500;text-transform:uppercase;font-size:10.5px;letter-spacing:.04em;
+  }
+  tbody td{padding:8px 10px;border-bottom:1px solid var(--line);}
+  tbody tr:nth-child(even){background:#F3F6F0;}
+  .table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px;}
+
+  .chart-box{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-bottom:20px;height:320px;}
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+  @media (max-width:760px){.two-col{grid-template-columns:1fr;}}
+
+  .clean-report ul{list-style:none;padding:0;margin:0;}
+  .clean-report li{
+    display:flex;justify-content:space-between;
+    padding:9px 0;border-bottom:1px dotted var(--line);font-family:var(--mono);font-size:13px;
+  }
+  .clean-report li b{color:var(--ink);}
+  .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10.5px;font-family:var(--mono);text-transform:uppercase;}
+  .badge.ok{background:#DEEEE2;color:var(--approve);}
+  .badge.warn{background:#F3E7C7;color:var(--pending);}
+  .badge.bad{background:#F5DAD5;color:var(--reject);}
+
+  #summaryText{
+    width:100%;min-height:340px;font-family:var(--mono);font-size:12.5px;
+    line-height:1.7;resize:vertical;padding:16px;
+  }
+  .empty{color:var(--ink-soft);font-size:13.5px;padding:20px 0;font-family:var(--mono);}
+  .hint{font-size:12px;color:var(--ink-soft);margin-top:8px;}
+  footer{margin-top:50px;text-align:center;color:var(--ink-soft);font-size:12px;font-family:var(--mono);}
+  a{color:var(--accent-ink);}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="hero">
+    <div class="stamp-wrap ok" id="stampWrap">
+      <div class="stamp-ring"></div>
+      <div class="stamp-core ok" id="stampCore">
+        <span class="pct" id="stampPct">—</span>
+        <span class="lbl">tindak lanjut</span>
+      </div>
+    </div>
+    <div class="hero-text">
+      <p class="eyebrow">Rekap &amp; Analisis Klaim · eKlaim / INA-CBG</p>
+      <h1>Berkas Klaim BPJS Kesehatan</h1>
+      <p>Unggah rekap TXT klaim bulanan dari faskes Anda untuk membersihkan data, memeriksa akar penyebab klaim tertunda/ditolak, dan memproyeksikan tren biaya ke depan — semua diproses langsung di browser.</p>
+      <div class="kpi-strip">
+        <div class="kpi"><span class="n" id="kpiTotal">0</span><span class="k">Klaim Dianalisis</span></div>
+        <div class="kpi"><span class="n" id="kpiRate">0%</span><span class="k">Perlu Tindak Lanjut</span></div>
+        <div class="kpi"><span class="n" id="kpiCost">Rp 0</span><span class="k">Total Tarif INA-CBG</span></div>
+        <div class="kpi"><span class="n" id="kpiVar">Rp 0</span><span class="k">Selisih Tarif RS</span></div>
+      </div>
+    </div>
+  </header>
+
+  <section class="panel">
+    <h2>1. Unggah Berkas TXT</h2>
+    <p class="sub">Bisa lebih dari satu file (mis. satu file per bulan) — akan digabung otomatis untuk analisis tren.</p>
+    <div class="dropzone" id="dropzone">
+      <strong>Klik atau seret file TXT/CSV ke sini</strong>
+      <span>Format: teks berpemisah (delimiter) — koma, titik koma, tab, atau pipa "|"</span>
+      <input type="file" id="fileInput" multiple accept=".txt,.csv">
+    </div>
+    <div class="file-list" id="fileList"></div>
+    <div class="row">
+      <div class="field">
+        <label>Pemisah Kolom (Delimiter)</label>
+        <select id="delimSelect">
+          <option value="auto">Deteksi otomatis</option>
+          <option value="|">Pipe ( | )</option>
+          <option value="\t">Tab</option>
+          <option value=",">Koma ( , )</option>
+          <option value=";">Titik koma ( ; )</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Baris pertama = header?</label>
+        <select id="headerSelect">
+          <option value="yes">Ya</option>
+          <option value="no">Tidak</option>
+        </select>
+      </div>
+      <div class="field" style="justify-content:flex-end;">
+        <button id="parseBtn" disabled>Baca &amp; Deteksi Kolom</button>
+      </div>
+    </div>
+    <div class="privacy-note">🔒 Berkas Anda tidak diunggah ke server manapun — seluruh pemrosesan berjalan lokal di browser ini.</div>
+  </section>
+
+  <section class="panel" id="mappingPanel" style="display:none;">
+    <h2>2. Pemetaan Kolom</h2>
+    <p class="sub">Cocokkan kolom pada berkas Anda dengan kolom yang dikenali sistem. Kolom bertanda <span class="req"></span> wajib diisi.</p>
+    <div class="map-grid" id="mapGrid"></div>
+    <div class="row">
+      <button id="cleanBtn">Terapkan &amp; Bersihkan Data</button>
+      <span class="hint" id="mapHint"></span>
+    </div>
+  </section>
+
+  <nav class="tabs" id="tabs" style="display:none;">
+    <button class="tab-btn active" data-tab="cleaning">1 · Data Cleaning</button>
+    <button class="tab-btn" data-tab="eda">2 · EDA</button>
+    <button class="tab-btn" data-tab="advanced">3 · Analisis Lanjutan</button>
+    <button class="tab-btn" data-tab="forecast">4 · Forecasting</button>
+    <button class="tab-btn" data-tab="summary">5 · Ringkasan Eksekutif</button>
+  </nav>
+
+  <main id="tabContent" style="display:none;">
+
+    <section class="tab-pane active" id="tab-cleaning">
+      <div class="panel clean-report">
+        <h2>Laporan Pembersihan Data</h2>
+        <ul id="cleanList"></ul>
+      </div>
+    </section>
+
+    <section class="tab-pane" id="tab-eda">
+      <div class="card-grid" id="edaCards"></div>
+      <div class="two-col">
+        <div class="chart-box"><canvas id="statusChart"></canvas></div>
+        <div class="chart-box"><canvas id="trendChart"></canvas></div>
+      </div>
+      <div class="panel">
+        <h2>Tingkat Tindak Lanjut per Poli / Ruangan</h2>
+        <p class="sub">Hanya menampilkan poli dengan minimal 5 klaim agar tidak bias oleh sampel kecil.</p>
+        <div class="table-wrap"><table id="poliTable"></table></div>
+      </div>
+    </section>
+
+    <section class="tab-pane" id="tab-advanced">
+      <div class="panel">
+        <h2>Analisis Pareto — DPJP dengan Klaim Perlu Tindak Lanjut Terbanyak</h2>
+        <div class="table-wrap"><table id="dpjpTable"></table></div>
+      </div>
+      <div class="panel">
+        <h2>Selisih Tarif RS vs INA-CBG per Kode CBG</h2>
+        <p class="sub">Nilai positif = tarif RS lebih tinggi dari pembayaran INA-CBG (potensi defisit).</p>
+        <div class="table-wrap"><table id="cbgTable"></table></div>
+      </div>
+
+      <div class="panel">
+        <h2>Uji Chi-Square — Asosiasi Status Klaim dengan Variabel Kategorikal</h2>
+        <p class="sub">Menguji apakah status klaim (Disetujui / Perlu Tindak Lanjut) berasosiasi secara statistik dengan Poli, DPJP, atau Kelas Rawat — bukan sekadar kebetulan sampling.</p>
+        <div class="row">
+          <div class="field">
+            <label>Variabel Kategorikal</label>
+            <select id="chiVarSelect"></select>
+          </div>
+        </div>
+        <div id="chiResult" class="empty">Pilih variabel untuk menjalankan uji.</div>
+      </div>
+
+      <div class="panel">
+        <h2>Uji Kruskal-Wallis — Perbedaan Distribusi Numerik Antar Kelompok</h2>
+        <p class="sub">Uji non-parametrik (tidak mengasumsikan distribusi normal — cocok untuk data biaya/LOS klaim yang umumnya menceng) untuk membandingkan median antar kelompok.</p>
+        <div class="row">
+          <div class="field">
+            <label>Variabel Numerik</label>
+            <select id="kwNumSelect"></select>
+          </div>
+          <div class="field">
+            <label>Dikelompokkan Berdasarkan</label>
+            <select id="kwGroupSelect"></select>
+          </div>
+        </div>
+        <div id="kwResult" class="empty">Pilih variabel untuk menjalankan uji.</div>
+      </div>
+    </section>
+
+    <section class="tab-pane" id="tab-forecast">
+      <div class="panel" id="forecastPanel">
+        <h2>Proyeksi Volume &amp; Biaya Klaim</h2>
+        <p class="sub">Proyeksi linear sederhana berbasis tren bulanan yang tersedia. Untuk model deret waktu yang lebih akurat (mis. Prophet/SARIMA dengan efek musiman), disarankan minimal 24 bulan data historis diproses lewat pipeline Python terpisah.</p>
+        <div class="chart-box"><canvas id="forecastChart"></canvas></div>
+        <p class="hint" id="forecastFit"></p>
+        <div class="table-wrap"><table id="forecastTable"></table></div>
+      </div>
+    </section>
+
+    <section class="tab-pane" id="tab-summary">
+      <div class="panel">
+        <h2>Ringkasan untuk Direksi / Stakeholder</h2>
+        <p class="sub">Teks dibuat otomatis dari hasil analisis — silakan sunting sebelum dibagikan.</p>
+        <textarea id="summaryText" readonly></textarea>
+        <div class="row"><button class="ghost" id="copyBtn">Salin Ringkasan</button></div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>Dibangun untuk analisis internal rekap klaim BPJS Kesehatan · pemrosesan 100% di sisi klien</footer>
+</div>
+
+<script>
+/* ===================== CONFIG ===================== */
+const FIELDS = [
+  {key:'tgl_masuk', label:'Tanggal Masuk', required:true, hints:['MASUK','TGLMASUK','TANGGALMASUK','ADMISSION']},
+  {key:'tgl_keluar', label:'Tanggal Keluar', required:false, hints:['KELUAR','TGLKELUAR','TANGGALKELUAR','DISCHARGE']},
+  {key:'status_klaim', label:'Status Klaim', required:true, hints:['STATUS','STATUSKLAIM']},
+  {key:'tarif_rs', label:'Tarif RS', required:false, hints:['TARIFRS','BIAYARS','TARIF_RS']},
+  {key:'tarif_inacbg', label:'Tarif INA-CBG', required:false, hints:['INACBG','TARIFCBG','TARIFINACBG']},
+  {key:'kode_inacbg', label:'Kode INA-CBG', required:false, hints:['KODEINACBG','KODECBG','CBG']},
+  {key:'poli', label:'Poli / Ruangan', required:false, hints:['POLI','RUANG']},
+  {key:'dpjp', label:'DPJP', required:false, hints:['DPJP','DOKTER']},
+  {key:'no_sep', label:'No SEP', required:false, hints:['NOSEP','SEP']},
+  {key:'diagnosa', label:'Diagnosa', required:false, hints:['DIAGNOSA','DIAG','ICD']},
+  {key:'kelas_rawat', label:'Kelas Rawat', required:false, hints:['KELAS']},
+];
+const STATUS_COLORS = {'Disetujui':'#2F6F4E','Pending':'#B8860B','Dispute':'#B23A2E','Ditolak':'#B23A2E','Dalam Verifikasi':'#4E5D54','Lainnya':'#8A9284','Tidak Diketahui':'#C9D2C2'};
+
+let state = { rawRows: [], headers: [], mapping: {}, cleaned: [], stats: null };
+
+/* ===================== STATISTICAL CORE (unit-tested — lihat stats_test.js) =====================
+   Fungsi di bawah ini identik dengan yang divalidasi di stats_test.js terhadap:
+   nilai kritis chi-square baku, uji independensi 2x2 manual, Kruskal-Wallis closed-form,
+   regresi linear manual, dan IQR manual. Jalankan `node stats_test.js` untuk memeriksa ulang. */
+function gammln(xx){
+  const cof=[76.18009172947146,-86.50532032941677,24.01409824083091,-1.231739572450155,0.1208650973866179e-2,-0.5395239384953e-5];
+  let x=xx, y=xx;
+  let tmp=x+5.5; tmp-=(x+0.5)*Math.log(tmp);
+  let ser=1.000000000190015;
+  for(let j=0;j<6;j++){ y+=1; ser+=cof[j]/y; }
+  return -tmp+Math.log(2.5066282746310005*ser/x);
+}
+function gser(a,x){
+  const ITMAX=200, EPS=3e-9;
+  const gln=gammln(a);
+  if(x<=0) return {gamser:0, gln};
+  let ap=a, sum=1/a, del=sum;
+  for(let n=1;n<=ITMAX;n++){ ap+=1; del*=x/ap; sum+=del; if(Math.abs(del)<Math.abs(sum)*EPS) break; }
+  return {gamser: sum*Math.exp(-x+a*Math.log(x)-gln), gln};
+}
+function gcf(a,x){
+  const ITMAX=200, EPS=3e-9, FPMIN=1e-300;
+  const gln=gammln(a);
+  let b=x+1-a, c=1/FPMIN, d=1/b, h=d;
+  for(let i=1;i<=ITMAX;i++){
+    const an=-i*(i-a); b+=2;
+    d=an*d+b; if(Math.abs(d)<FPMIN) d=FPMIN;
+    c=b+an/c; if(Math.abs(c)<FPMIN) c=FPMIN;
+    d=1/d; const del=d*c; h*=del;
+    if(Math.abs(del-1)<EPS) break;
+  }
+  return {gammcf: Math.exp(-x+a*Math.log(x)-gln)*h, gln};
+}
+function gammq(a,x){
+  if(x<0||a<=0) return NaN;
+  if(x<a+1) return 1-gser(a,x).gamser;
+  return gcf(a,x).gammcf;
+}
+function chiSqPValue(chi2, df){ return gammq(df/2, chi2/2); }
+
+function chiSquareTest(table){
+  const rows=table.length, cols=table[0].length;
+  const rowSums=table.map(r=>r.reduce((a,b)=>a+b,0));
+  const colSums=table[0].map((_,c)=>table.reduce((a,r)=>a+r[c],0));
+  const N=rowSums.reduce((a,b)=>a+b,0);
+  const expected=table.map((row,i)=>row.map((_,j)=>rowSums[i]*colSums[j]/N));
+  let chi2=0;
+  for(let i=0;i<rows;i++) for(let j=0;j<cols;j++){ const e=expected[i][j]; if(e>0) chi2+=(table[i][j]-e)**2/e; }
+  const df=(rows-1)*(cols-1);
+  return {chi2, df, p: chiSqPValue(chi2, df), expected};
+}
+
+function rankArray(values){
+  const idx=values.map((v,i)=>i).sort((a,b)=>values[a]-values[b]);
+  const ranks=new Array(values.length);
+  let i=0;
+  while(i<idx.length){
+    let j=i;
+    while(j+1<idx.length && values[idx[j+1]]===values[idx[i]]) j++;
+    const avgRank=(i+1+j+1)/2;
+    for(let k=i;k<=j;k++) ranks[idx[k]]=avgRank;
+    i=j+1;
+  }
+  return ranks;
+}
+function kruskalWallis(groups){
+  const all=groups.flat();
+  const N=all.length;
+  const ranks=rankArray(all);
+  let offset=0; const Rsum=[];
+  groups.forEach(g=>{ let s=0; for(let i=0;i<g.length;i++) s+=ranks[offset+i]; Rsum.push(s); offset+=g.length; });
+  let H=(12/(N*(N+1)))*groups.reduce((acc,g,i)=>acc+(Rsum[i]**2)/g.length,0) - 3*(N+1);
+  const counts={};
+  all.forEach(v=>counts[v]=(counts[v]||0)+1);
+  const tieSum=Object.values(counts).reduce((acc,t)=>acc+(t**3-t),0);
+  const C=1-tieSum/(N**3-N);
+  if(C>0) H=H/C;
+  const df=groups.length-1;
+  return {H, df, p: chiSqPValue(H, df)};
+}
+
+function linearRegressionStats(x,y){
+  const n=x.length;
+  const mx=x.reduce((a,b)=>a+b,0)/n, my=y.reduce((a,b)=>a+b,0)/n;
+  let num=0, den=0;
+  for(let i=0;i<n;i++){ num+=(x[i]-mx)*(y[i]-my); den+=(x[i]-mx)**2; }
+  const slope=den===0?0:num/den;
+  const intercept=my-slope*mx;
+  let ssRes=0, ssTot=0;
+  for(let i=0;i<n;i++){ const pred=intercept+slope*x[i]; ssRes+=(y[i]-pred)**2; ssTot+=(y[i]-my)**2; }
+  const r2=ssTot===0?1:1-ssRes/ssTot;
+  return {slope, intercept, r2};
+}
+
+function medianOf(arr){ const s=[...arr].sort((a,b)=>a-b); const n=s.length; const mid=Math.floor(n/2); return n%2===0?(s[mid-1]+s[mid])/2:s[mid]; }
+function quartiles(values){
+  const sorted=[...values].sort((a,b)=>a-b);
+  const n=sorted.length, mid=Math.floor(n/2);
+  const lower = sorted.slice(0,mid);
+  const upper = n%2===0 ? sorted.slice(mid) : sorted.slice(mid+1);
+  const q1=medianOf(lower), q3=medianOf(upper);
+  return {q1, q3, iqr:q3-q1};
+}
+
+/* ===================== UPLOAD ===================== */
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const fileListEl = document.getElementById('fileList');
+const parseBtn = document.getElementById('parseBtn');
+let selectedFiles = [];
+
+dropzone.addEventListener('click', ()=>fileInput.click());
+dropzone.addEventListener('dragover', e=>{e.preventDefault();dropzone.classList.add('drag');});
+dropzone.addEventListener('dragleave', ()=>dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop', e=>{
+  e.preventDefault(); dropzone.classList.remove('drag');
+  handleFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', e=>handleFiles(e.target.files));
+
+function handleFiles(files){
+  selectedFiles = Array.from(files);
+  fileListEl.innerHTML = selectedFiles.map(f=>`<div>📄 ${f.name} — ${(f.size/1024).toFixed(1)} KB</div>`).join('');
+  parseBtn.disabled = selectedFiles.length===0;
+}
+
+document.getElementById('parseBtn').addEventListener('click', async ()=>{
+  const delimChoice = document.getElementById('delimSelect').value;
+  const hasHeader = document.getElementById('headerSelect').value === 'yes';
+  let allRows = [];
+  let headers = [];
+  for(const file of selectedFiles){
+    const text = await readFileAsText(file);
+    const delim = delimChoice==='auto' ? detectDelimiter(text) : delimChoice;
+    const parsed = Papa.parse(text, {
+      delimiter: delim==='\\t' ? '\t' : delim,
+      header: hasHeader,
+      skipEmptyLines: true,
+    });
+    let rows = parsed.data;
+    let cols = hasHeader ? parsed.meta.fields : rows[0].map((_,i)=>'Kolom_'+(i+1));
+    if(!hasHeader){
+      rows = rows.map(r=>{
+        const o={}; cols.forEach((c,i)=>o[c]=r[i]); return o;
+      });
+    }
+    rows.forEach(r=>r.__source = file.name);
+    headers = cols;
+    allRows = allRows.concat(rows);
+  }
+  state.rawRows = allRows;
+  state.headers = headers;
+  buildMappingUI(headers);
+});
+
+function readFileAsText(file){
+  return new Promise((resolve,reject)=>{
+    const reader = new FileReader();
+    reader.onload = ()=>resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsText(file, 'UTF-8');
+  });
+}
+
+function detectDelimiter(text){
+  const firstLine = text.split(/\r?\n/)[0] || '';
+  const candidates = {'|': (firstLine.match(/\|/g)||[]).length, '\t': (firstLine.match(/\t/g)||[]).length, ';': (firstLine.match(/;/g)||[]).length, ',': (firstLine.match(/,/g)||[]).length};
+  return Object.entries(candidates).sort((a,b)=>b[1]-a[1])[0][0];
+}
+
+/* ===================== MAPPING ===================== */
+function buildMappingUI(headers){
+  const grid = document.getElementById('mapGrid');
+  grid.innerHTML = '';
+  FIELDS.forEach(f=>{
+    const wrap = document.createElement('div');
+    wrap.className = 'field';
+    const label = document.createElement('label');
+    label.innerHTML = f.required ? `<span class="req">${f.label}</span>` : f.label;
+    const select = document.createElement('select');
+    select.dataset.key = f.key;
+    select.innerHTML = '<option value="">— tidak ada —</option>' + headers.map(h=>`<option value="${h}">${h}</option>`).join('');
+    const guess = headers.find(h=> f.hints.some(hint=> h.toUpperCase().replace(/[^A-Z]/g,'').includes(hint)) );
+    if(guess) select.value = guess;
+    wrap.appendChild(label); wrap.appendChild(select);
+    grid.appendChild(wrap);
+  });
+  document.getElementById('mappingPanel').style.display='block';
+  document.getElementById('mappingPanel').scrollIntoView({behavior:'smooth'});
+}
+
+document.getElementById('cleanBtn').addEventListener('click', ()=>{
+  const selects = document.querySelectorAll('#mapGrid select');
+  const mapping = {};
+  selects.forEach(s=> mapping[s.dataset.key] = s.value);
+  const missingReq = FIELDS.filter(f=>f.required && !mapping[f.key]);
+  if(missingReq.length){
+    document.getElementById('mapHint').textContent = 'Lengkapi dulu: ' + missingReq.map(f=>f.label).join(', ');
+    return;
+  }
+  document.getElementById('mapHint').textContent = '';
+  state.mapping = mapping;
+  cleanAndAnalyze();
+});
+
+/* ===================== CLEANING ===================== */
+function parseDate(v){
+  if(!v) return null;
+  const s = String(v).trim();
+  let m;
+  if(m = s.match(/^(\d{4})-(\d{2})-(\d{2})/)) return new Date(+m[1], +m[2]-1, +m[3]);
+  if(m = s.match(/^(\d{2})[\/\-](\d{2})[\/\-](\d{4})/)) return new Date(+m[3], +m[2]-1, +m[1]);
+  if(m = s.match(/^(\d{4})(\d{2})(\d{2})$/)) return new Date(+m[1], +m[2]-1, +m[3]);
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+function parseNumber(v){
+  if(v===null||v===undefined) return null;
+  let s = String(v).trim();
+  if(s==='') return null;
+  if(/,\d{1,2}$/.test(s) && s.includes('.')) s = s.replace(/\./g,'').replace(',', '.');
+  else if(s.includes(',') && !s.includes('.')) s = s.replace(',', '.');
+  else s = s.replace(/,/g,'');
+  const n = parseFloat(s.replace(/[^0-9.\-]/g,''));
+  return isNaN(n) ? null : n;
+}
+function normalizeStatus(v){
+  if(!v) return 'Tidak Diketahui';
+  const s = String(v).toUpperCase();
+  if(s.includes('LAYAK')||s.includes('APPROV')||s.includes('SETUJU')||s.includes('DIBAYAR')) return 'Disetujui';
+  if(s.includes('DISPUTE')) return 'Dispute';
+  if(s.includes('TOLAK')||s.includes('REJECT')) return 'Ditolak';
+  if(s.includes('PENDING')||s.includes('TUNDA')) return 'Pending';
+  if(s.includes('VERIFIKASI')||s.includes('PROSES')) return 'Dalam Verifikasi';
+  return 'Lainnya';
+}
+const NEEDS_FOLLOWUP = new Set(['Pending','Dispute','Ditolak']);
+
+function cleanAndAnalyze(){
+  const map = state.mapping;
+  const seenSep = new Set();
+  let report = {total: state.rawRows.length, missingRequired:0, duplicateSep:0, invalidDates:0, outlierLOS:0, final:0};
+  let cleaned = [];
+  let losValues = [];
+
+  state.rawRows.forEach(row=>{
+    const tglMasuk = parseDate(row[map.tgl_masuk]);
+    const statusRaw = row[map.status_klaim];
+    if(!tglMasuk || !statusRaw){ report.missingRequired++; return; }
+    const tglKeluar = map.tgl_keluar ? parseDate(row[map.tgl_keluar]) : null;
+    let los = null;
+    if(tglKeluar){
+      los = Math.round((tglKeluar - tglMasuk)/86400000);
+      losValues.push(los);
+    }
+    const sep = map.no_sep ? row[map.no_sep] : null;
+    let isDup = false;
+    if(sep){ if(seenSep.has(sep)){ isDup=true; report.duplicateSep++; } seenSep.add(sep); }
+
+    cleaned.push({
+      tglMasuk, tglKeluar, los,
+      status: normalizeStatus(statusRaw),
+      tarifRS: map.tarif_rs ? parseNumber(row[map.tarif_rs]) : null,
+      tarifCBG: map.tarif_inacbg ? parseNumber(row[map.tarif_inacbg]) : null,
+      kodeCBG: map.kode_inacbg ? (row[map.kode_inacbg]||'Tidak diketahui') : null,
+      poli: map.poli ? (row[map.poli]||'Tidak diketahui') : null,
+      dpjp: map.dpjp ? (row[map.dpjp]||'Tidak diketahui') : null,
+      diagnosa: map.diagnosa ? row[map.diagnosa] : null,
+      kelasRawat: map.kelas_rawat ? row[map.kelas_rawat] : null,
+      isDup,
+      month: tglMasuk.getFullYear()+'-'+String(tglMasuk.getMonth()+1).padStart(2,'0'),
+    });
+  });
+
+  // outlier LOS via IQR (quartiles() — divalidasi di stats_test.js)
+  if(losValues.length>4){
+    const {q1, q3, iqr} = quartiles(losValues);
+    const upper = q3 + 1.5*iqr;
+    const lower = Math.min(0, q1 - 1.5*iqr);
+    cleaned.forEach(r=>{
+      if(r.los!==null && (r.los<lower || r.los>upper || r.los<0)){
+        r.losOutlier = true; report.outlierLOS++;
+      }
+    });
+  }
+
+  report.final = cleaned.length;
+  state.cleaned = cleaned;
+  renderCleaningReport(report);
+  computeStats();
+  document.getElementById('tabs').style.display='flex';
+  document.getElementById('tabContent').style.display='block';
+  document.getElementById('tabs').scrollIntoView({behavior:'smooth'});
+}
+
+function renderCleaningReport(r){
+  const items = [
+    ['Total baris pada berkas', r.total, ''],
+    ['Baris dengan tanggal/status tidak lengkap (dibuang)', r.missingRequired, r.missingRequired>0?'warn':'ok'],
+    ['Klaim dengan No SEP duplikat (ditandai)', r.duplicateSep, r.duplicateSep>0?'warn':'ok'],
+    ['Length of Stay pencilan (ditandai, IQR method)', r.outlierLOS, r.outlierLOS>0?'warn':'ok'],
+    ['Baris final siap dianalisis', r.final, 'ok'],
+  ];
+  document.getElementById('cleanList').innerHTML = items.map(([label,val,tag])=>
+    `<li><span>${label}</span><b>${val}${tag?` <span class="badge ${tag}">${tag==='ok'?'baik':'perlu cek'}</span>`:''}</b></li>`
+  ).join('');
+}
+
+/* ===================== STATS + RENDER ===================== */
+function computeStats(){
+  const rows = state.cleaned;
+  const statusCounts = {};
+  rows.forEach(r=> statusCounts[r.status] = (statusCounts[r.status]||0)+1);
+  const followUp = rows.filter(r=>NEEDS_FOLLOWUP.has(r.status)).length;
+  const rate = rows.length ? (followUp/rows.length*100) : 0;
+
+  const withCBG = rows.filter(r=>r.tarifRS!=null && r.tarifCBG!=null);
+  const totalCBG = withCBG.reduce((s,r)=>s+r.tarifCBG,0);
+  const totalRS = withCBG.reduce((s,r)=>s+r.tarifRS,0);
+  const totalVariance = totalRS - totalCBG;
+
+  const losRows = rows.filter(r=>r.los!=null && !r.losOutlier);
+  const avgLOS = losRows.length ? (losRows.reduce((s,r)=>s+r.los,0)/losRows.length) : null;
+
+  // monthly aggregation
+  const monthly = {};
+  rows.forEach(r=>{
+    if(!monthly[r.month]) monthly[r.month] = {count:0, tarifCBG:0, tarifRS:0};
+    monthly[r.month].count++;
+    if(r.tarifCBG!=null) monthly[r.month].tarifCBG += r.tarifCBG;
+    if(r.tarifRS!=null) monthly[r.month].tarifRS += r.tarifRS;
+  });
+  const months = Object.keys(monthly).sort();
+
+  // by poli
+  const byPoli = {};
+  rows.forEach(r=>{
+    if(!r.poli) return;
+    if(!byPoli[r.poli]) byPoli[r.poli] = {total:0, followUp:0};
+    byPoli[r.poli].total++;
+    if(NEEDS_FOLLOWUP.has(r.status)) byPoli[r.poli].followUp++;
+  });
+
+  // by dpjp
+  const byDPJP = {};
+  rows.forEach(r=>{
+    if(!r.dpjp) return;
+    if(!byDPJP[r.dpjp]) byDPJP[r.dpjp] = {total:0, followUp:0};
+    byDPJP[r.dpjp].total++;
+    if(NEEDS_FOLLOWUP.has(r.status)) byDPJP[r.dpjp].followUp++;
+  });
+
+  // by CBG variance
+  const byCBG = {};
+  withCBG.forEach(r=>{
+    const k = r.kodeCBG || 'Tidak diketahui';
+    if(!byCBG[k]) byCBG[k] = {count:0, variance:0};
+    byCBG[k].count++;
+    byCBG[k].variance += (r.tarifRS - r.tarifCBG);
+  });
+
+  state.stats = {statusCounts, followUp, rate, totalCBG, totalRS, totalVariance, avgLOS, monthly, months, byPoli, byDPJP, byCBG};
+  renderAll();
+}
+
+function fmtRp(n){
+  if(n==null || isNaN(n)) return 'Rp 0';
+  return 'Rp ' + Math.round(n).toLocaleString('id-ID');
+}
+
+let charts = {};
+function renderAll(){
+  const s = state.stats;
+  // hero KPIs + stamp
+  document.getElementById('kpiTotal').textContent = state.cleaned.length.toLocaleString('id-ID');
+  document.getElementById('kpiRate').textContent = s.rate.toFixed(1)+'%';
+  document.getElementById('kpiCost').textContent = fmtRp(s.totalCBG);
+  document.getElementById('kpiVar').textContent = fmtRp(s.totalVariance);
+
+  const stampCore = document.getElementById('stampCore');
+  const stampWrap = document.getElementById('stampWrap');
+  const stampPct = document.getElementById('stampPct');
+  stampPct.textContent = s.rate.toFixed(0)+'%';
+  let cls = 'ok';
+  if(s.rate>=20) cls='bad'; else if(s.rate>=10) cls='warn';
+  stampCore.className = 'stamp-core '+cls;
+  stampWrap.className = 'stamp-wrap '+cls;
+
+  // EDA cards
+  document.getElementById('edaCards').innerHTML = `
+    <div class="card"><div class="v">${state.cleaned.length.toLocaleString('id-ID')}</div><div class="t">Total Klaim</div></div>
+    <div class="card reject"><div class="v">${s.followUp.toLocaleString('id-ID')}</div><div class="t">Perlu Tindak Lanjut</div></div>
+    <div class="card approve"><div class="v">${(s.statusCounts['Disetujui']||0).toLocaleString('id-ID')}</div><div class="t">Disetujui</div></div>
+    <div class="card"><div class="v">${s.avgLOS!=null ? s.avgLOS.toFixed(1)+' hari' : '—'}</div><div class="t">Rata-rata LOS</div></div>
+  `;
+
+  renderStatusChart(s);
+  renderTrendChart(s);
+  renderPoliTable(s);
+  renderDpjpTable(s);
+  renderCbgTable(s);
+  renderInferentialTests();
+  renderForecast(s);
+  renderSummary(s);
+}
+
+function renderStatusChart(s){
+  const ctx = document.getElementById('statusChart');
+  if(charts.status) charts.status.destroy();
+  const labels = Object.keys(s.statusCounts);
+  charts.status = new Chart(ctx, {
+    type:'doughnut',
+    data:{labels, datasets:[{data:labels.map(l=>s.statusCounts[l]), backgroundColor:labels.map(l=>STATUS_COLORS[l]||'#999')}]},
+    options:{plugins:{title:{display:true,text:'Distribusi Status Klaim'}, legend:{position:'bottom', labels:{font:{family:'IBM Plex Mono',size:10}}}}, maintainAspectRatio:false}
+  });
+}
+
+function renderTrendChart(s){
+  const ctx = document.getElementById('trendChart');
+  if(charts.trend) charts.trend.destroy();
+  const months = s.months;
+  charts.trend = new Chart(ctx, {
+    data:{
+      labels: months,
+      datasets:[
+        {type:'bar', label:'Volume Klaim', data: months.map(m=>s.monthly[m].count), backgroundColor:'#1F6F5C', yAxisID:'y'},
+        {type:'line', label:'Total Tarif INA-CBG', data: months.map(m=>s.monthly[m].tarifCBG), borderColor:'#B8860B', backgroundColor:'#B8860B', yAxisID:'y1', tension:.25},
+      ]
+    },
+    options:{
+      maintainAspectRatio:false,
+      plugins:{title:{display:true,text:'Tren Volume & Biaya Klaim per Bulan'}},
+      scales:{
+        y:{position:'left', title:{display:true,text:'Jumlah Klaim'}},
+        y1:{position:'right', grid:{drawOnChartArea:false}, title:{display:true,text:'Rp'}},
+      }
+    }
+  });
+}
+
+function tableHTML(headers, rows){
+  return `<thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows}</tbody>`;
+}
+
+function renderPoliTable(s){
+  const arr = Object.entries(s.byPoli).filter(([k,v])=>v.total>=5)
+    .map(([k,v])=>({poli:k, total:v.total, followUp:v.followUp, rate:v.followUp/v.total*100}))
+    .sort((a,b)=>b.rate-a.rate);
+  const rows = arr.map(r=>`<tr><td>${r.poli}</td><td>${r.total}</td><td>${r.followUp}</td><td>${r.rate.toFixed(1)}%</td></tr>`).join('') || '<tr><td colspan="4">Kolom Poli tidak dipetakan atau data tidak cukup.</td></tr>';
+  document.getElementById('poliTable').innerHTML = tableHTML(['Poli/Ruangan','Total Klaim','Perlu Tindak Lanjut','Rate'], rows);
+}
+
+function renderDpjpTable(s){
+  const arr = Object.entries(s.byDPJP).filter(([k,v])=>v.total>=5)
+    .map(([k,v])=>({dpjp:k, total:v.total, followUp:v.followUp, rate:v.followUp/v.total*100}))
+    .sort((a,b)=>b.followUp-a.followUp).slice(0,15);
+  let cum=0; const totalFU = arr.reduce((s2,r)=>s2+r.followUp,0) || 1;
+  const rows = arr.map(r=>{ cum+=r.followUp; return `<tr><td>${r.dpjp}</td><td>${r.total}</td><td>${r.followUp}</td><td>${r.rate.toFixed(1)}%</td><td>${(cum/totalFU*100).toFixed(1)}%</td></tr>`; }).join('') || '<tr><td colspan="5">Kolom DPJP tidak dipetakan atau data tidak cukup.</td></tr>';
+  document.getElementById('dpjpTable').innerHTML = tableHTML(['DPJP','Total Klaim','Perlu Tindak Lanjut','Rate','Kumulatif %'], rows);
+}
+
+function renderCbgTable(s){
+  const arr = Object.entries(s.byCBG).map(([k,v])=>({kode:k, count:v.count, variance:v.variance, avg:v.variance/v.count}))
+    .sort((a,b)=>b.variance-a.variance).slice(0,15);
+  const rows = arr.map(r=>`<tr><td>${r.kode}</td><td>${r.count}</td><td>${fmtRp(r.variance)}</td><td>${fmtRp(r.avg)}</td></tr>`).join('') || '<tr><td colspan="4">Kolom Tarif RS/INA-CBG tidak dipetakan.</td></tr>';
+  document.getElementById('cbgTable').innerHTML = tableHTML(['Kode INA-CBG','Jumlah Kasus','Total Selisih (RS-CBG)','Rata-rata Selisih'], rows);
+}
+
+/* ===================== UJI INFERENSIAL (Chi-Square & Kruskal-Wallis) ===================== */
+function availableCatFields(){
+  const opts=[];
+  if(state.mapping.poli) opts.push({key:'poli', label:'Poli/Ruangan'});
+  if(state.mapping.dpjp) opts.push({key:'dpjp', label:'DPJP'});
+  if(state.mapping.kelas_rawat) opts.push({key:'kelasRawat', label:'Kelas Rawat'});
+  return opts;
+}
+function availableNumFields(){
+  const opts=[];
+  if(state.mapping.tgl_keluar) opts.push({key:'los', label:'Length of Stay (hari)'});
+  if(state.mapping.tarif_rs) opts.push({key:'tarifRS', label:'Tarif RS (Rp)'});
+  if(state.mapping.tarif_inacbg) opts.push({key:'tarifCBG', label:'Tarif INA-CBG (Rp)'});
+  return opts;
+}
+
+function renderInferentialTests(){
+  const catFields = availableCatFields();
+  const numFields = availableNumFields();
+  const chiSel = document.getElementById('chiVarSelect');
+  const kwNumSel = document.getElementById('kwNumSelect');
+  const kwGroupSel = document.getElementById('kwGroupSelect');
+
+  if(catFields.length===0){
+    document.getElementById('chiResult').innerHTML = 'Tidak ada kolom kategorikal (Poli/DPJP/Kelas Rawat) yang dipetakan, jadi uji asosiasi belum bisa dijalankan.';
+    document.getElementById('kwResult').innerHTML = 'Tidak ada kolom kategorikal yang dipetakan untuk pengelompokan.';
+    chiSel.innerHTML=''; kwGroupSel.innerHTML=''; kwNumSel.innerHTML='';
+    return;
+  }
+  chiSel.innerHTML = catFields.map(f=>`<option value="${f.key}">${f.label}</option>`).join('');
+  kwGroupSel.innerHTML = catFields.map(f=>`<option value="${f.key}">${f.label}</option>`).join('');
+  kwNumSel.innerHTML = numFields.length ? numFields.map(f=>`<option value="${f.key}">${f.label}</option>`).join('') : '<option value="">(tidak ada kolom numerik)</option>';
+
+  chiSel.onchange = runChiSquare;
+  kwNumSel.onchange = runKruskalWallis;
+  kwGroupSel.onchange = runKruskalWallis;
+
+  runChiSquare();
+  if(numFields.length) runKruskalWallis();
+  else document.getElementById('kwResult').innerHTML = 'Tidak ada kolom numerik (Tarif RS / Tarif INA-CBG, atau Tgl Keluar untuk menghitung LOS) yang dipetakan.';
+}
+
+function runChiSquare(){
+  const key = document.getElementById('chiVarSelect').value;
+  if(!key) return;
+  const counts = {};
+  state.cleaned.forEach(r=>{
+    const cat = r[key];
+    if(!cat) return;
+    if(!counts[cat]) counts[cat] = {setuju:0, lanjut:0};
+    if(r.status==='Disetujui') counts[cat].setuju++;
+    else if(NEEDS_FOLLOWUP.has(r.status)) counts[cat].lanjut++;
+  });
+  let entries = Object.entries(counts).map(([k,v])=>({k, total:v.setuju+v.lanjut, setuju:v.setuju, lanjut:v.lanjut})).filter(e=>e.total>=5);
+  entries.sort((a,b)=>b.total-a.total);
+  let top = entries.slice(0,6);
+  const rest = entries.slice(6);
+  if(rest.length){
+    const merged = rest.reduce((acc,e)=>({setuju:acc.setuju+e.setuju, lanjut:acc.lanjut+e.lanjut}),{setuju:0,lanjut:0});
+    top.push({k:'Lainnya (gabungan)', total:merged.setuju+merged.lanjut, setuju:merged.setuju, lanjut:merged.lanjut});
+  }
+  if(top.length<2){
+    document.getElementById('chiResult').innerHTML = 'Kategori dengan data cukup (≥5 klaim) kurang dari 2 — uji tidak dapat dijalankan.';
+    return;
+  }
+  const table = top.map(e=>[e.setuju, e.lanjut]);
+  const result = chiSquareTest(table);
+  const lowExpected = result.expected.some(row=>row.some(v=>v<5));
+  const sig = result.p<0.05;
+  let html = `<div class="table-wrap"><table>${tableHTML(['Kategori','Disetujui','Perlu Tindak Lanjut','% Tindak Lanjut'],
+    top.map(e=>`<tr><td>${e.k}</td><td>${e.setuju}</td><td>${e.lanjut}</td><td>${(e.lanjut/e.total*100).toFixed(1)}%</td></tr>`).join(''))}</table></div>`;
+  html += `<p style="margin-top:14px;font-family:var(--mono);font-size:13px;">χ² = ${result.chi2.toFixed(3)}, df = ${result.df}, <b>p = ${result.p<0.0001?'&lt;0.0001':result.p.toFixed(4)}</b> — `;
+  html += sig ? `<span class="badge bad">signifikan</span> ada asosiasi antara variabel ini dengan status klaim (kemungkinan besar bukan kebetulan sampling).` : `<span class="badge ok">tidak signifikan</span> belum cukup bukti adanya asosiasi pada tingkat kepercayaan 95%.`;
+  html += `</p>`;
+  if(lowExpected) html += `<p class="hint">⚠️ Sebagian nilai harapan (expected) &lt;5 — pertimbangkan menggabungkan kategori kecil agar hasil lebih andal.</p>`;
+  document.getElementById('chiResult').innerHTML = html;
+}
+
+function runKruskalWallis(){
+  const numKey = document.getElementById('kwNumSelect').value;
+  const groupKey = document.getElementById('kwGroupSelect').value;
+  if(!numKey || !groupKey) return;
+  const byGroup = {};
+  state.cleaned.forEach(r=>{
+    const g = r[groupKey];
+    const v = r[numKey];
+    if(!g || v==null) return;
+    if(numKey==='los' && r.losOutlier) return;
+    if(!byGroup[g]) byGroup[g]=[];
+    byGroup[g].push(v);
+  });
+  let entries = Object.entries(byGroup).filter(([k,arr])=>arr.length>=5).sort((a,b)=>b[1].length-a[1].length).slice(0,8);
+  if(entries.length<2){
+    document.getElementById('kwResult').innerHTML = 'Kelompok dengan data cukup (≥5 klaim) kurang dari 2 — uji tidak dapat dijalankan.';
+    return;
+  }
+  const groups = entries.map(([k,arr])=>arr);
+  const result = kruskalWallis(groups);
+  const sig = result.p<0.05;
+  const rows = entries.map(([k,arr])=>`<tr><td>${k}</td><td>${arr.length}</td><td>${medianOf(arr).toLocaleString('id-ID')}</td></tr>`).join('');
+  let html = `<div class="table-wrap"><table>${tableHTML(['Kelompok','n','Median'], rows)}</table></div>`;
+  html += `<p style="margin-top:14px;font-family:var(--mono);font-size:13px;">H = ${result.H.toFixed(3)}, df = ${result.df}, <b>p = ${result.p<0.0001?'&lt;0.0001':result.p.toFixed(4)}</b> — `;
+  html += sig ? `<span class="badge bad">signifikan</span> median antar kelompok berbeda secara statistik.` : `<span class="badge ok">tidak signifikan</span> belum cukup bukti perbedaan median antar kelompok pada tingkat kepercayaan 95%.`;
+  html += `</p>`;
+  document.getElementById('kwResult').innerHTML = html;
+}
+
+/* Proyeksi linear di atas linearRegressionStats() yang tervalidasi (lihat stats_test.js) */
+function linearForecast(values, periodsAhead){
+  const n = values.length;
+  const xs = values.map((_,i)=>i);
+  const {slope, intercept, r2} = linearRegressionStats(xs, values);
+  const forecast = [];
+  for(let i=0;i<periodsAhead;i++){ forecast.push(Math.max(0, intercept + slope*(n+i))); }
+  return {forecast, r2, slope};
+}
+function nextMonths(lastMonth, n){
+  let [y,m] = lastMonth.split('-').map(Number);
+  const out=[];
+  for(let i=0;i<n;i++){ m++; if(m>12){m=1;y++;} out.push(y+'-'+String(m).padStart(2,'0')); }
+  return out;
+}
+
+function renderForecast(s){
+  const ctx = document.getElementById('forecastChart');
+  const panel = document.getElementById('forecastPanel');
+  if(charts.forecast) charts.forecast.destroy();
+  if(s.months.length<3){
+    document.getElementById('forecastTable').innerHTML = '';
+    ctx.getContext('2d').clearRect(0,0,ctx.width,ctx.height);
+    document.getElementById('forecastTable').innerHTML = '<tbody><tr><td>Butuh data minimal 3 bulan berbeda untuk membuat proyeksi. Unggah lebih banyak berkas bulanan.</td></tr></tbody>';
+    return;
+  }
+  const volumes = s.months.map(m=>s.monthly[m].count);
+  const costs = s.months.map(m=>s.monthly[m].tarifCBG);
+  const volFit = linearForecast(volumes, 3);
+  const costFit = linearForecast(costs, 3);
+  const fVol = volFit.forecast, fCost = costFit.forecast;
+  const futureMonths = nextMonths(s.months[s.months.length-1], 3);
+  const allLabels = [...s.months, ...futureMonths];
+
+  charts.forecast = new Chart(ctx, {
+    type:'line',
+    data:{
+      labels: allLabels,
+      datasets:[
+        {label:'Volume Klaim (aktual)', data:[...volumes, ...Array(3).fill(null)], borderColor:'#1F6F5C', backgroundColor:'#1F6F5C', tension:.2},
+        {label:'Volume Klaim (proyeksi)', data:[...Array(volumes.length-1).fill(null), volumes[volumes.length-1], ...fVol], borderColor:'#1F6F5C', borderDash:[6,4], pointStyle:'triangle'},
+      ]
+    },
+    options:{maintainAspectRatio:false, plugins:{title:{display:true,text:'Proyeksi Volume Klaim 3 Bulan ke Depan'}}}
+  });
+
+  const rows = futureMonths.map((m,i)=>`<tr><td>${m}</td><td>${Math.round(fVol[i])}</td><td>${fmtRp(fCost[i])}</td></tr>`).join('');
+  document.getElementById('forecastTable').innerHTML = tableHTML(['Bulan Proyeksi','Perkiraan Volume Klaim','Perkiraan Total Tarif INA-CBG'], rows);
+
+  const fitNote = document.getElementById('forecastFit');
+  const quality = volFit.r2>=0.7 ? 'kuat' : volFit.r2>=0.4 ? 'sedang' : 'lemah';
+  fitNote.innerHTML = `Kecocokan garis tren terhadap data volume bulanan: <b>R² = ${volFit.r2.toFixed(3)}</b> (${quality}). `
+    + (s.months.length<6 ? 'Catatan: dengan &lt;6 bulan data, R² masih sangat sensitif terhadap 1-2 titik data — perlakukan proyeksi ini sebagai indikasi kasar, bukan angka pasti.' : '');
+}
+
+function renderSummary(s){
+  const total = state.cleaned.length;
+  const rate = s.rate.toFixed(1);
+  const topPoli = Object.entries(s.byPoli).filter(([k,v])=>v.total>=5).map(([k,v])=>({k,rate:v.followUp/v.total*100})).sort((a,b)=>b.rate-a.rate)[0];
+  const topCBG = Object.entries(s.byCBG).sort((a,b)=>b[1].variance-a[1].variance)[0];
+  const periode = s.months.length ? `${s.months[0]} s.d. ${s.months[s.months.length-1]}` : '(periode tidak terdeteksi)';
+
+  let text = `RINGKASAN EKSEKUTIF — ANALISIS KLAIM BPJS KESEHATAN\n`;
+  text += `Periode data: ${periode}\n\n`;
+  text += `1. VOLUME & TINDAK LANJUT\n`;
+  text += `Dari ${total.toLocaleString('id-ID')} klaim yang dianalisis, ${rate}% (${s.followUp.toLocaleString('id-ID')} klaim) berstatus pending, dispute, atau ditolak dan memerlukan tindak lanjut administratif.\n\n`;
+  text += `2. BIAYA\n`;
+  text += `Total tarif INA-CBG pada periode ini sebesar ${fmtRp(s.totalCBG)}, dengan selisih terhadap tarif RS sebesar ${fmtRp(s.totalVariance)} (${s.totalVariance>=0?'RS berpotensi defisit':'RS diuntungkan'} pada agregat kasus yang tercatat).\n\n`;
+  text += `3. AKAR PENYEBAB UTAMA\n`;
+  text += topPoli ? `Poli/ruangan dengan tingkat tindak lanjut tertinggi: ${topPoli.k} (${topPoli.rate.toFixed(1)}%). Direkomendasikan audit koding tertarget pada unit ini.\n` : `Kolom Poli/Ruangan belum dipetakan sehingga breakdown per unit belum tersedia.\n`;
+  text += topCBG ? `Kode INA-CBG dengan selisih tarif kumulatif terbesar: ${topCBG[0]} (${fmtRp(topCBG[1].variance)}).\n\n` : `\n`;
+  text += `4. PROYEKSI\n`;
+  text += s.months.length>=3 ? `Berdasarkan tren ${s.months.length} bulan terakhir, volume dan biaya klaim diproyeksikan berdasarkan tren linear — lihat tab Forecasting untuk rincian 3 bulan ke depan. Proyeksi ini bersifat indikatif; akurasi akan meningkat dengan histori data yang lebih panjang (idealnya 24 bulan) untuk menangkap pola musiman.\n\n` : `Data belum mencakup minimal 3 bulan sehingga proyeksi tren belum dapat dibuat secara andal.\n\n`;
+  text += `5. REKOMENDASI TINDAK LANJUT\n`;
+  text += `- Lakukan audit koding pra-submit pada unit dengan rejection/pending rate tertinggi.\n`;
+  text += `- Bangun pemantauan berkala (bulanan) atas tren volume dan biaya klaim untuk perencanaan kas.\n`;
+  text += `- Tinjau kembali kasus dengan selisih tarif RS-INACBG terbesar untuk menilai apakah defisit bersifat struktural.\n`;
+
+  document.getElementById('summaryText').value = text;
+}
+
+document.getElementById('copyBtn').addEventListener('click', ()=>{
+  const ta = document.getElementById('summaryText');
+  ta.select();
+  navigator.clipboard.writeText(ta.value).then(()=>{
+    const btn = document.getElementById('copyBtn');
+    const old = btn.textContent; btn.textContent = 'Tersalin ✓';
+    setTimeout(()=>btn.textContent = old, 1500);
+  });
+});
+
+/* ===================== TABS ===================== */
+document.querySelectorAll('.tab-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-'+btn.dataset.tab).classList.add('active');
+  });
+});
+</script>
+</body>
+</html>
