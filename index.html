@@ -783,7 +783,8 @@ function renderAll(){
 }
 
 function renderStatusChart(s){
-  const ctx = document.getElementById('statusChart');
+  // Tambahkan .getContext('2d') di ujungnya
+  const ctx = document.getElementById('statusChart').getContext('2d'); 
   if(charts.status) charts.status.destroy();
   const labels = Object.keys(s.statusCounts);
   charts.status = new Chart(ctx, {
